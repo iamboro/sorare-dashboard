@@ -50,14 +50,20 @@
   .card .diff{font-size:12px; font-weight:600; margin-top:2px;}
   .diff.up{color:var(--green);}
   .diff.down{color:var(--red);}
+  .card-link{display:inline-block; margin-top:4px; font-size:12px; font-weight:600; color:var(--accent); text-decoration:none;}
+  .card-link:active{opacity:.6;}
   .empty{text-align:center; color:var(--muted); font-size:14px; padding:40px 20px;}
   .league-header{font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
     color:var(--muted); margin:22px 4px 8px; display:flex; align-items:center; justify-content:space-between;}
-  .group-title{font-size:19px; font-weight:700; margin:18px 4px 4px; letter-spacing:-0.01em;}
+  .group-title{font-size:19px; font-weight:700; margin:18px 4px 4px; letter-spacing:-0.01em;
+    display:flex; align-items:baseline; gap:8px;}
+  .group-count{font-size:14px; font-weight:500; color:var(--muted);}
   .squad-card{background:var(--card); border-radius:12px; padding:10px 14px; margin-bottom:6px;
     display:flex; align-items:center; gap:10px; box-shadow:0 1px 2px rgba(0,0,0,.03);}
+  .squad-card.purchased{opacity:.55;}
   .dot{width:10px; height:10px; border-radius:50%; flex-shrink:0; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);}
   .squad-card .name{font-size:15px; font-weight:600; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .squad-card.purchased .name{text-decoration:line-through;}
   .squad-card .pos{font-size:12px; color:var(--muted); font-weight:600; width:28px; text-align:center;}
   .squad-card .cat{font-size:11px; color:var(--muted); max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .legend{display:flex; flex-wrap:wrap; gap:8px 14px; padding:12px 4px 4px; font-size:12px; color:var(--muted);}
@@ -169,12 +175,19 @@
     }
     var html = '';
     items.forEach(function(it){
-      var diffClass = it.diff > 0 ? 'up' : (it.diff < 0 ? 'down' : '');
+      // diff = currentPrice - floor (floor excludes own card).
+      // diff > 0 -> our card is NOT the cheapest (red); diff < 0 -> our card IS the cheapest (green).
+      var notCheapest = it.diff > 0;
+      var diffClass = notCheapest ? 'down' : (it.diff < 0 ? 'up' : '');
       var diffSign = it.diff > 0 ? '+' : '';
+      var link = (notCheapest && it.slug)
+        ? '<a class="card-link" href="https://sorare.com/football/cards/' + encodeURIComponent(it.slug) + '" target="_blank" rel="noopener">Открыть на Sorare →</a>'
+        : '';
       html += '<div class="card">' +
         '<div class="left">' +
           '<div class="name">' + esc(it.name) + '</div>' +
           '<div class="sub">' + esc(it.rarity) + ' · ' + esc(it.season) + ' · ' + esc(it.type) + (it.number ? ' · #' + esc(it.number) : '') + '</div>' +
+          link +
         '</div>' +
         '<div class="right">' +
           '<div class="price">' + fmtMoney(it.currentPrice) + '</div>' +
@@ -240,31 +253,9 @@
     }).join('');
   }
 
-  function groupByLeague(items){
-    var order = [];
-    var map = {};
-    items.forEach(function(it){
-      if (!map[it.league]){ map[it.league] = []; order.push(it.league); }
-      map[it.league].push(it);
-    });
-    return order.map(function(league){ return { league: league, players: map[league] }; });
-  }
-
-  function renderPlayerList(items){
-    var groups = groupByLeague(items);
-    var html = '';
-    groups.forEach(function(g){
-      html += '<div class="league-header">' + esc(g.league) + '<span>' + g.players.length + '</span></div>';
-      g.players.forEach(function(p){
-        html += '<div class="squad-card">' +
-          '<span class="dot" style="background:' + esc(p.color || '#c7c7cc') + '"></span>' +
-          '<span class="name">' + esc(p.name) + '</span>' +
-          '<span class="pos">' + esc(p.position || '') + '</span>' +
-          '<span class="cat">' + esc(p.category || '') + '</span>' +
-        '</div>';
-      });
-    });
-    return html || '<div class="empty">Пусто</div>';
+  // Collapse "LFC P&P" and "LFC P&P (auction)" into a single collection group.
+  function mergeCategory(cat){
+    return (cat && String(cat).indexOf('LFC P&P') === 0) ? 'LFC P&P' : cat;
   }
 
   function renderSquads(data){
@@ -278,17 +269,47 @@
 
     var colorByLabel = {};
     (data.legend || []).forEach(function(l){ colorByLabel[l.label] = l.color; });
-    function withColor(items){
-      return (items || []).map(function(it){
-        return Object.assign({}, it, { color: colorByLabel[it.category] || '#c7c7cc' });
-      });
-    }
 
-    var html = '<div class="group-title">Мои карты (' + (data.myCards || []).length + ')</div>';
-    html += renderPlayerList(withColor(data.myCards));
-    html += '<div class="group-title">Мои цели (' + (data.myTargets || []).length + ')</div>';
-    html += renderPlayerList(withColor(data.myTargets));
-    squadsList.innerHTML = html;
+    // Build group order from the legend, merging duplicate ("yellow") categories.
+    var order = [];
+    var seen = {};
+    (data.legend || []).forEach(function(l){
+      var cat = mergeCategory(l.label);
+      if (cat && !seen[cat]){ seen[cat] = true; order.push(cat); }
+    });
+
+    var groups = {};
+    order.forEach(function(c){ groups[c] = []; });
+
+    var all = (data.myCards || []).concat(data.myTargets || []);
+    all.forEach(function(p){
+      var cat = mergeCategory(p.category) || 'Другое';
+      if (!groups[cat]){ groups[cat] = []; order.push(cat); }
+      groups[cat].push(p);
+    });
+
+    var html = '';
+    order.forEach(function(cat){
+      var items = groups[cat];
+      if (!items || !items.length) return;
+      items.sort(function(a, b){
+        if (!!a.purchased !== !!b.purchased) return a.purchased ? 1 : -1;
+        return String(a.name).localeCompare(String(b.name));
+      });
+      var purchasedCount = items.filter(function(p){ return p.purchased; }).length;
+      html += '<div class="group-title">' + esc(cat) +
+        '<span class="group-count">' + purchasedCount + '/' + items.length + ' куплено</span></div>';
+      items.forEach(function(p){
+        var color = colorByLabel[p.category] || '#c7c7cc';
+        html += '<div class="squad-card' + (p.purchased ? ' purchased' : '') + '">' +
+          '<span class="dot" style="background:' + esc(color) + '"></span>' +
+          '<span class="name">' + esc(p.name) + '</span>' +
+          '<span class="pos">' + esc(p.position || '') + '</span>' +
+          '<span class="cat">' + esc(p.league || '') + '</span>' +
+        '</div>';
+      });
+    });
+    squadsList.innerHTML = html || '<div class="empty">Пусто</div>';
   }
 
   function loadSquads(){
