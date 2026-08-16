@@ -74,6 +74,32 @@
   .spinner{display:inline-block; width:15px; height:15px; border:2px solid rgba(255,255,255,.5);
     border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:-3px; margin-right:6px;}
   @keyframes spin{to{transform:rotate(360deg);}}
+  .transfer-card{background:var(--card); border-radius:12px; padding:12px 14px; margin-bottom:8px;
+    display:flex; align-items:center; gap:10px; box-shadow:0 1px 2px rgba(0,0,0,.03);}
+  .transfer-badge{width:26px; height:26px; border-radius:50%; flex-shrink:0; display:flex; align-items:center;
+    justify-content:center; font-size:14px; font-weight:700;}
+  .transfer-badge.in{background:rgba(52,199,89,.15); color:var(--green);}
+  .transfer-badge.out{background:rgba(255,59,48,.15); color:var(--red);}
+  .transfer-info{min-width:0; flex:1;}
+  .transfer-info .name{font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .transfer-info .sub{font-size:12px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .transfer-right{text-align:right; flex-shrink:0;}
+  .transfer-right .type{font-size:12px; font-weight:600;}
+  .transfer-right .date{font-size:11px; color:var(--muted); margin-top:2px;}
+  .section-title{font-size:19px; font-weight:700; margin:18px 4px 8px; letter-spacing:-0.01em;}
+  .watch-search{position:relative; margin:0 4px 10px;}
+  .watch-search input{width:100%; padding:11px 14px; border-radius:12px; border:none; background:var(--card);
+    font-size:15px; box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .watch-results{position:absolute; left:0; right:0; top:calc(100% + 4px); background:var(--card);
+    border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,.15); overflow:hidden; z-index:5; max-height:260px; overflow-y:auto;}
+  .watch-result-item{padding:10px 14px; font-size:14px; cursor:pointer; display:flex; align-items:center; gap:10px;}
+  .watch-result-item:active{background:var(--bg);}
+  .watch-result-item img{width:28px; height:28px; border-radius:50%; object-fit:cover; background:var(--bg);}
+  .watch-chip-row{display:flex; flex-wrap:wrap; gap:8px; margin:0 4px 14px;}
+  .watch-chip{display:flex; align-items:center; gap:6px; background:var(--card); border-radius:16px;
+    padding:6px 10px 6px 12px; font-size:13px; font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.04);}
+  .watch-chip .remove{width:18px; height:18px; border-radius:50%; background:var(--sep); color:var(--muted);
+    border:none; font-size:12px; line-height:18px; text-align:center; cursor:pointer; padding:0;}
 </style>
 </head>
 <body>
@@ -83,6 +109,7 @@
   <div class="segmented">
     <button id="tabBtnCards" class="active">Мои карты</button>
     <button id="tabBtnSquads">Мои составы</button>
+    <button id="tabBtnTransfers">Трансферы</button>
   </div>
 </header>
 
@@ -101,6 +128,21 @@
     <div id="squadsList"></div>
   </section>
 
+  <section id="tabTransfers" class="tab">
+    <div class="meta-line" id="transfersMeta"></div>
+
+    <div class="section-title">Отслеживаемые игроки</div>
+    <div class="watch-search">
+      <input type="text" id="playerSearchInput" placeholder="Добавить игрока по имени…" autocomplete="off">
+      <div class="watch-results" id="playerSearchResults" style="display:none;"></div>
+    </div>
+    <div class="watch-chip-row" id="watchChipRow"></div>
+    <div id="watchTransfersList"></div>
+
+    <div class="section-title">Ливерпуль · Атлетико · Вердер · ПСЖ</div>
+    <div id="clubTransfersList"></div>
+  </section>
+
 </div>
 
 <script>
@@ -110,18 +152,22 @@
 
   var tabBtnCards = document.getElementById('tabBtnCards');
   var tabBtnSquads = document.getElementById('tabBtnSquads');
+  var tabBtnTransfers = document.getElementById('tabBtnTransfers');
   var tabCards = document.getElementById('tabCards');
   var tabSquads = document.getElementById('tabSquads');
+  var tabTransfers = document.getElementById('tabTransfers');
 
   tabBtnCards.addEventListener('click', function(){ showTab('cards'); });
   tabBtnSquads.addEventListener('click', function(){ showTab('squads'); loadSquads(); });
+  tabBtnTransfers.addEventListener('click', function(){ showTab('transfers'); loadTransfers(); });
 
   function showTab(name){
-    var isCards = name === 'cards';
-    tabBtnCards.classList.toggle('active', isCards);
-    tabBtnSquads.classList.toggle('active', !isCards);
-    tabCards.classList.toggle('active', isCards);
-    tabSquads.classList.toggle('active', !isCards);
+    tabBtnCards.classList.toggle('active', name === 'cards');
+    tabBtnSquads.classList.toggle('active', name === 'squads');
+    tabBtnTransfers.classList.toggle('active', name === 'transfers');
+    tabCards.classList.toggle('active', name === 'cards');
+    tabSquads.classList.toggle('active', name === 'squads');
+    tabTransfers.classList.toggle('active', name === 'transfers');
   }
 
   function fmtMoney(v){
@@ -322,6 +368,176 @@
       .catch(function(err){
         squadsList.innerHTML = '<div class="empty">Не удалось загрузить данные.<br>' + esc(err.message || err) + '</div>';
         squadsLoaded = false;
+      });
+  }
+
+  // ---------- TRANSFERS TAB ----------
+  var transfersMeta = document.getElementById('transfersMeta');
+  var clubTransfersList = document.getElementById('clubTransfersList');
+  var watchTransfersList = document.getElementById('watchTransfersList');
+  var watchChipRow = document.getElementById('watchChipRow');
+  var playerSearchInput = document.getElementById('playerSearchInput');
+  var playerSearchResults = document.getElementById('playerSearchResults');
+  var transfersLoaded = false;
+  var currentWatchlist = [];
+
+  var CLUB_NAMES_RU = {
+    'Liverpool': 'Ливерпуль',
+    'Atletico Madrid': 'Атлетико',
+    'Werder Bremen': 'Вердер',
+    'PSG': 'ПСЖ'
+  };
+
+  function fmtDate(iso){
+    if (!iso) return '';
+    try {
+      var d = new Date(iso);
+      return d.toLocaleDateString('ru-RU', {day:'2-digit', month:'2-digit', year:'numeric'});
+    } catch(e){ return ''; }
+  }
+
+  function renderTransferCard(clubLabel, playerName, date, type, direction, otherTeam){
+    var isIn = direction === 'in';
+    var arrow = isIn ? '↓' : '↑';
+    var badgeClass = isIn ? 'in' : 'out';
+    var subLine = isIn ? ('из ' + esc(otherTeam || '—')) : ('в ' + esc(otherTeam || '—'));
+    return '<div class="transfer-card">' +
+      '<div class="transfer-badge ' + badgeClass + '">' + arrow + '</div>' +
+      '<div class="transfer-info">' +
+        '<div class="name">' + esc(playerName) + (clubLabel ? ' <span style="color:var(--muted);font-weight:500;">· ' + esc(clubLabel) + '</span>' : '') + '</div>' +
+        '<div class="sub">' + subLine + '</div>' +
+      '</div>' +
+      '<div class="transfer-right">' +
+        '<div class="type">' + esc(type || '') + '</div>' +
+        '<div class="date">' + fmtDate(date) + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderClubTransfers(clubsData){
+    var items = (clubsData && clubsData.items) || [];
+    if (!items.length){
+      clubTransfersList.innerHTML = '<div class="empty">Нет свежих трансферов за отслеживаемый период.</div>';
+      return;
+    }
+    clubTransfersList.innerHTML = items.map(function(it){
+      var label = CLUB_NAMES_RU[it.club] || it.club;
+      return renderTransferCard(label, it.playerName, it.date, it.type, it.direction, it.otherTeam);
+    }).join('');
+  }
+
+  function renderWatchlist(watchData){
+    currentWatchlist = (watchData && watchData.watchlist) || [];
+    watchChipRow.innerHTML = currentWatchlist.map(function(pl){
+      return '<span class="watch-chip">' + esc(pl.name) +
+        '<button class="remove" data-id="' + pl.id + '" title="Убрать">×</button></span>';
+    }).join('');
+    watchChipRow.querySelectorAll('.remove').forEach(function(btn){
+      btn.addEventListener('click', function(){ removeWatchPlayer(Number(btn.getAttribute('data-id'))); });
+    });
+
+    var items = (watchData && watchData.items) || [];
+    if (!currentWatchlist.length){
+      watchTransfersList.innerHTML = '';
+      return;
+    }
+    if (!items.length){
+      watchTransfersList.innerHTML = '<div class="empty">Трансферов у отслеживаемых игроков не найдено.</div>';
+      return;
+    }
+    watchTransfersList.innerHTML = items.map(function(it){
+      var direction = 'in';
+      return renderTransferCard('', it.playerName, it.date, it.type, 'in', it.fromTeam) ;
+    }).join('');
+  }
+
+  function loadTransfers(){
+    if (transfersLoaded) return;
+    transfersLoaded = true;
+    skeletons(clubTransfersList, 5);
+    fetch(API_URL + '?action=transfers&_=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.error){
+          clubTransfersList.innerHTML = '<div class="empty">Ошибка: ' + esc(data.error) + '</div>';
+          return;
+        }
+        transfersMeta.textContent = 'Обновлено: ' + fmtTime((data.clubs && data.clubs.updatedAt) || '');
+        renderClubTransfers(data.clubs);
+        renderWatchlist(data.watchlist);
+      })
+      .catch(function(err){
+        clubTransfersList.innerHTML = '<div class="empty">Не удалось загрузить данные.<br>' + esc(err.message || err) + '</div>';
+        transfersLoaded = false;
+      });
+  }
+
+  var searchDebounce = null;
+  playerSearchInput.addEventListener('input', function(){
+    var q = playerSearchInput.value.trim();
+    clearTimeout(searchDebounce);
+    if (q.length < 3){
+      playerSearchResults.style.display = 'none';
+      playerSearchResults.innerHTML = '';
+      return;
+    }
+    searchDebounce = setTimeout(function(){
+      fetch(API_URL + '?action=searchPlayer&q=' + encodeURIComponent(q) + '&_=' + Date.now())
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          var players = (data && data.players) || [];
+          if (!players.length){
+            playerSearchResults.innerHTML = '<div class="watch-result-item" style="color:var(--muted);">Ничего не найдено</div>';
+            playerSearchResults.style.display = 'block';
+            return;
+          }
+          playerSearchResults.innerHTML = players.map(function(pl){
+            return '<div class="watch-result-item" data-id="' + pl.id + '" data-name="' + esc(pl.name) + '">' +
+              (pl.photo ? '<img src="' + esc(pl.photo) + '" alt="">' : '') +
+              '<span>' + esc(pl.name) + (pl.nationality ? ' <span style="color:var(--muted);">· ' + esc(pl.nationality) + '</span>' : '') + '</span>' +
+            '</div>';
+          }).join('');
+          playerSearchResults.style.display = 'block';
+          playerSearchResults.querySelectorAll('.watch-result-item[data-id]').forEach(function(el){
+            el.addEventListener('click', function(){
+              addWatchPlayer(Number(el.getAttribute('data-id')), el.getAttribute('data-name'));
+              playerSearchInput.value = '';
+              playerSearchResults.style.display = 'none';
+              playerSearchResults.innerHTML = '';
+            });
+          });
+        })
+        .catch(function(){ playerSearchResults.style.display = 'none'; });
+    }, 350);
+  });
+
+  document.addEventListener('click', function(e){
+    if (!playerSearchResults.contains(e.target) && e.target !== playerSearchInput){
+      playerSearchResults.style.display = 'none';
+    }
+  });
+
+  function addWatchPlayer(id, name){
+    fetch(API_URL + '?action=addPlayer&token=' + encodeURIComponent(DASHBOARD_TOKEN) +
+      '&playerId=' + id + '&playerName=' + encodeURIComponent(name) + '&_=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        if (res.ok){
+          transfersLoaded = false;
+          loadTransfers();
+        }
+      });
+  }
+
+  function removeWatchPlayer(id){
+    fetch(API_URL + '?action=removePlayer&token=' + encodeURIComponent(DASHBOARD_TOKEN) +
+      '&playerId=' + id + '&_=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        if (res.ok){
+          transfersLoaded = false;
+          loadTransfers();
+        }
       });
   }
 
