@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sorare Dashboard</title>
+<style>
+  :root{
+    --bg:#f2f2f7;
+    --card:#ffffff;
+    --text:#1c1c1e;
+    --muted:#8e8e93;
+    --accent:#007aff;
+    --green:#34c759;
+    --red:#ff3b30;
+    --sep:#e5e5ea;
+    --radius:16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:720px; margin:0 auto; padding:0 16px 100px;}
+  header.top{position:sticky; top:0; z-index:10; background:rgba(242,242,247,0.85);
+    backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px);
+    padding:14px 16px 8px; border-bottom:1px solid var(--sep);}
+  h1{font-size:22px; font-weight:700; margin:0 0 10px; text-align:center; letter-spacing:-0.02em;}
+  .segmented{display:flex; background:#e9e9eb; border-radius:10px; padding:2px; max-width:720px; margin:0 auto;}
+  .segmented button{flex:1; border:none; background:transparent; padding:8px 0; font-size:14px;
+    font-weight:600; color:var(--text); border-radius:8px; cursor:pointer; transition:background .2s;}
+  .segmented button.active{background:var(--card); box-shadow:0 1px 3px rgba(0,0,0,.12);}
+  .meta-line{text-align:center; font-size:12px; color:var(--muted); margin:8px 0 0;}
+  section.tab{display:none; padding-top:14px;}
+  section.tab.active{display:block;}
+  .update-btn{display:block; width:100%; margin:14px 0; padding:14px; border:none; border-radius:14px;
+    background:var(--accent); color:#fff; font-size:16px; font-weight:600; cursor:pointer;
+    box-shadow:0 2px 8px rgba(0,122,255,.35); transition:opacity .15s, transform .1s;}
+  .update-btn:active{transform:scale(.98); opacity:.85;}
+  .update-btn:disabled{background:#a9c9f5; box-shadow:none;}
+  .status-msg{text-align:center; font-size:13px; margin:-4px 0 10px; min-height:16px; color:var(--muted);}
+  .status-msg.err{color:var(--red);}
+  .status-msg.ok{color:var(--green);}
+  .card{background:var(--card); border-radius:var(--radius); padding:14px 16px; margin-bottom:10px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04); display:flex; align-items:center; justify-content:space-between; gap:12px;}
+  .card .left{min-width:0;}
+  .card .name{font-size:16px; font-weight:600; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;}
+  .card .sub{font-size:12px; color:var(--muted); margin-top:2px;}
+  .card .right{text-align:right; flex-shrink:0;}
+  .card .price{font-size:16px; font-weight:700;}
+  .card .diff{font-size:12px; font-weight:600; margin-top:2px;}
+  .diff.up{color:var(--green);}
+  .diff.down{color:var(--red);}
+  .empty{text-align:center; color:var(--muted); font-size:14px; padding:40px 20px;}
+  .league-header{font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--muted); margin:22px 4px 8px; display:flex; align-items:center; justify-content:space-between;}
+  .group-title{font-size:19px; font-weight:700; margin:18px 4px 4px; letter-spacing:-0.01em;}
+  .squad-card{background:var(--card); border-radius:12px; padding:10px 14px; margin-bottom:6px;
+    display:flex; align-items:center; gap:10px; box-shadow:0 1px 2px rgba(0,0,0,.03);}
+  .dot{width:10px; height:10px; border-radius:50%; flex-shrink:0; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);}
+  .squad-card .name{font-size:15px; font-weight:600; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .squad-card .pos{font-size:12px; color:var(--muted); font-weight:600; width:28px; text-align:center;}
+  .squad-card .cat{font-size:11px; color:var(--muted); max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .legend{display:flex; flex-wrap:wrap; gap:8px 14px; padding:12px 4px 4px; font-size:12px; color:var(--muted);}
+  .legend .item{display:flex; align-items:center; gap:5px;}
+  .skeleton{background:linear-gradient(90deg,#eee 25%,#f5f5f5 37%,#eee 63%); background-size:400% 100%;
+    animation:shimmer 1.4s ease infinite; border-radius:var(--radius); height:58px; margin-bottom:10px;}
+  @keyframes shimmer{0%{background-position:100% 50%;}100%{background-position:0 50%;}}
+  .spinner{display:inline-block; width:15px; height:15px; border:2px solid rgba(255,255,255,.5);
+    border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; vertical-align:-3px; margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Sorare</h1>
+  <div class="segmented">
+    <button id="tabBtnCards" class="active">Мои карты</button>
+    <button id="tabBtnSquads">Мои составы</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section id="tabCards" class="tab active">
+    <button class="update-btn" id="updateBtn">Обновить мои карты и цены</button>
+    <div class="status-msg" id="updateStatus"></div>
+    <div class="meta-line" id="cardsMeta"></div>
+    <div id="cardsList"></div>
+  </section>
+
+  <section id="tabSquads" class="tab">
+    <div class="meta-line" id="squadsMeta"></div>
+    <div class="legend" id="legendRow"></div>
+    <div id="squadsList"></div>
+  </section>
+
+</div>
+
+<script>
+(function(){
+  var API_URL = "https://script.google.com/macros/s/AKfycbyc27j39sTQcfAI_RytBhgykPoCECfXU8Ud0sNmqCAldk1FUry1pGYVEwsKDTzowMM/exec";
+  var DASHBOARD_TOKEN = "mg7f-x92k-qz4h-p8vn-r3ct-lw6b";
+
+  var tabBtnCards = document.getElementById('tabBtnCards');
+  var tabBtnSquads = document.getElementById('tabBtnSquads');
+  var tabCards = document.getElementById('tabCards');
+  var tabSquads = document.getElementById('tabSquads');
+
+  tabBtnCards.addEventListener('click', function(){ showTab('cards'); });
+  tabBtnSquads.addEventListener('click', function(){ showTab('squads'); loadSquads(); });
+
+  function showTab(name){
+    var isCards = name === 'cards';
+    tabBtnCards.classList.toggle('active', isCards);
+    tabBtnSquads.classList.toggle('active', !isCards);
+    tabCards.classList.toggle('active', isCards);
+    tabSquads.classList.toggle('active', !isCards);
+  }
+
+  function fmtMoney(v){
+    if (typeof v !== 'number') return '—';
+    return '$' + v.toFixed(2);
+  }
+  function fmtPct(v){
+    if (typeof v !== 'number') return '';
+    var pct = (v * 100);
+    var sign = pct > 0 ? '+' : '';
+    return sign + pct.toFixed(1) + '%';
+  }
+  function fmtTime(iso){
+    if (!iso) return '';
+    try {
+      var d = new Date(iso);
+      return d.toLocaleString('ru-RU', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+    } catch(e){ return ''; }
+  }
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function skeletons(container, n){
+    var html = '';
+    for (var i = 0; i < n; i++) html += '<div class="skeleton"></div>';
+    container.innerHTML = html;
+  }
+
+  // ---------- CARDS TAB ----------
+  var cardsList = document.getElementById('cardsList');
+  var cardsMeta = document.getElementById('cardsMeta');
+  var updateBtn = document.getElementById('updateBtn');
+  var updateStatus = document.getElementById('updateStatus');
+
+  function renderCards(data){
+    if (data.error){
+      cardsList.innerHTML = '<div class="empty">Ошибка: ' + esc(data.error) + '</div>';
+      cardsMeta.textContent = '';
+      return;
+    }
+    var items = data.items || [];
+    cardsMeta.textContent = items.length
+      ? 'Обновлено: ' + fmtTime(data.updatedAt) + ' · карточек: ' + items.length
+      : 'Обновлено: ' + fmtTime(data.updatedAt);
+    if (!items.length){
+      cardsList.innerHTML = '<div class="empty">Нет карточек в продаже с разницей в цене.<br>Все выставленные карты продаются по рынку.</div>';
+      return;
+    }
+    var html = '';
+    items.forEach(function(it){
+      var diffClass = it.diff > 0 ? 'up' : (it.diff < 0 ? 'down' : '');
+      var diffSign = it.diff > 0 ? '+' : '';
+      html += '<div class="card">' +
+        '<div class="left">' +
+          '<div class="name">' + esc(it.name) + '</div>' +
+          '<div class="sub">' + esc(it.rarity) + ' · ' + esc(it.season) + ' · ' + esc(it.type) + (it.number ? ' · #' + esc(it.number) : '') + '</div>' +
+        '</div>' +
+        '<div class="right">' +
+          '<div class="price">' + fmtMoney(it.currentPrice) + '</div>' +
+          '<div class="sub">floor ' + fmtMoney(it.floor) + '</div>' +
+          '<div class="diff ' + diffClass + '">' + diffSign + fmtMoney(Math.abs(it.diff) === it.diff ? it.diff : it.diff) + ' (' + fmtPct(it.diffPct) + ')</div>' +
+        '</div>' +
+      '</div>';
+    });
+    cardsList.innerHTML = html;
+  }
+
+  function loadCards(){
+    skeletons(cardsList, 5);
+    fetch(API_URL + '?action=cards&_=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .then(renderCards)
+      .catch(function(err){
+        cardsList.innerHTML = '<div class="empty">Не удалось загрузить данные.<br>' + esc(err.message || err) + '</div>';
+      });
+  }
+
+  var updating = false;
+  updateBtn.addEventListener('click', function(){
+    if (updating) return;
+    updating = true;
+    updateBtn.disabled = true;
+    updateBtn.innerHTML = '<span class="spinner"></span>Обновляем…';
+    updateStatus.textContent = '';
+    updateStatus.className = 'status-msg';
+
+    fetch(API_URL + '?action=update&token=' + encodeURIComponent(DASHBOARD_TOKEN) + '&_=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        if (res.ok){
+          updateStatus.textContent = 'Готово: карты и цены обновлены';
+          updateStatus.className = 'status-msg ok';
+          loadCards();
+        } else {
+          updateStatus.textContent = 'Ошибка: ' + (res.error || 'неизвестная ошибка');
+          updateStatus.className = 'status-msg err';
+        }
+      })
+      .catch(function(err){
+        updateStatus.textContent = 'Ошибка сети: ' + (err.message || err);
+        updateStatus.className = 'status-msg err';
+      })
+      .finally(function(){
+        updating = false;
+        updateBtn.disabled = false;
+        updateBtn.textContent = 'Обновить мои карты и цены';
+      });
+  });
+
+  // ---------- SQUADS TAB ----------
+  var squadsList = document.getElementById('squadsList');
+  var squadsMeta = document.getElementById('squadsMeta');
+  var legendRow = document.getElementById('legendRow');
+  var squadsLoaded = false;
+
+  function renderLegend(legend){
+    legendRow.innerHTML = (legend || []).map(function(l){
+      return '<span class="item"><span class="dot" style="background:' + esc(l.color) + '"></span>' + esc(l.label) + '</span>';
+    }).join('');
+  }
+
+  function groupByLeague(items){
+    var order = [];
+    var map = {};
+    items.forEach(function(it){
+      if (!map[it.league]){ map[it.league] = []; order.push(it.league); }
+      map[it.league].push(it);
+    });
+    return order.map(function(league){ return { league: league, players: map[league] }; });
+  }
+
+  function renderPlayerList(items){
+    var groups = groupByLeague(items);
+    var html = '';
+    groups.forEach(function(g){
+      html += '<div class="league-header">' + esc(g.league) + '<span>' + g.players.length + '</span></div>';
+      g.players.forEach(function(p){
+        html += '<div class="squad-card">' +
+          '<span class="dot" style="background:' + esc(p.color || '#c7c7cc') + '"></span>' +
+          '<span class="name">' + esc(p.name) + '</span>' +
+          '<span class="pos">' + esc(p.position || '') + '</span>' +
+          '<span class="cat">' + esc(p.category || '') + '</span>' +
+        '</div>';
+      });
+    });
+    return html || '<div class="empty">Пусто</div>';
+  }
+
+  function renderSquads(data){
+    if (data.error){
+      squadsList.innerHTML = '<div class="empty">Ошибка: ' + esc(data.error) + '</div>';
+      squadsMeta.textContent = '';
+      return;
+    }
+    squadsMeta.textContent = 'Обновлено: ' + fmtTime(data.updatedAt);
+    renderLegend(data.legend);
+
+    var colorByLabel = {};
+    (data.legend || []).forEach(function(l){ colorByLabel[l.label] = l.color; });
+    function withColor(items){
+      return (items || []).map(function(it){
+        return Object.assign({}, it, { color: colorByLabel[it.category] || '#c7c7cc' });
+      });
+    }
+
+    var html = '<div class="group-title">Мои карты (' + (data.myCards || []).length + ')</div>';
+    html += renderPlayerList(withColor(data.myCards));
+    html += '<div class="group-title">Мои цели (' + (data.myTargets || []).length + ')</div>';
+    html += renderPlayerList(withColor(data.myTargets));
+    squadsList.innerHTML = html;
+  }
+
+  function loadSquads(){
+    if (squadsLoaded) return;
+    squadsLoaded = true;
+    skeletons(squadsList, 6);
+    fetch(API_URL + '?action=squads&_=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .then(renderSquads)
+      .catch(function(err){
+        squadsList.innerHTML = '<div class="empty">Не удалось загрузить данные.<br>' + esc(err.message || err) + '</div>';
+        squadsLoaded = false;
+      });
+  }
+
+  loadCards();
+})();
+</script>
+</body>
+</html>
